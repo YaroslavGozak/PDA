@@ -20,6 +20,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import java.util.Enumeration;
 import java.util.Hashtable;
@@ -51,8 +52,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap = googleMap;
         Hashtable<String,Anomaly> anomalies = addAnomalies();
         setAnomaliesToGeofence(anomalies);
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (checkPermission()) {
             mMap.setMyLocationEnabled(true);
         }
         else {
@@ -63,6 +63,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         configureMap();
     }
+
+    private boolean checkPermission(){
+        return (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED);
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
         switch (requestCode) {
@@ -70,12 +76,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    // permission was granted, yay! Do the task you need to do.
-
-                } else {
-
-                    // permission denied, boo! Disable the functionality that depends on this permission.
+                }
+                else {
                 }
                 return;
             }
@@ -85,7 +87,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
         LatLng bootcamp = new LatLng(50.3865, 30.747);
         mMap.addMarker(new MarkerOptions().position(bootcamp).title("Bootcamp"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mAnomalies.get("Home").getPosition(),17));
+        if(checkPermission())
+        mFusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                    @Override
+                    public void onSuccess(Location location) {
+                        // Got last known location. In some rare situations this can be null.
+                        if (location != null) {
+                            LatLng startLocation = new LatLng(location.getLatitude(),location.getLongitude());
+                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(startLocation,17));
+                        }
+                    }
+                });
     }
 
     private void setupLocation(){
@@ -106,7 +119,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 for (Location location : locationResult.getLocations()) {
                     if(isInAnomaly(location)){
                         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-                        //v.vibrate(500);
+                        v.vibrate(500);
                         startGeigerCounterSound();
                     }
                     else{
@@ -137,6 +150,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mAnomalies.put("House of Kesar", new Anomaly(50.4609, 30.3626,40, "House of Kesar"));
         mAnomalies.put("Velika Kyshenia", new Anomaly(50.4443, 30.5421,10, "Velika Kyshenia"));
 
+        mAnomalies.put("Mariinsky Park 1", new Anomaly(50.4460, 30.5389,10, "Mariinsky Park 1"));
+        mAnomalies.put("Mariinsky Park 2", new Anomaly(50.4453, 30.5406,15, "Mariinsky Park 2"));
+        mAnomalies.put("Mariinsky Park 3", new Anomaly(50.4447, 30.5420,20, "Mariinsky Park 3"));
+        mAnomalies.put("Mariinsky Park 4", new Anomaly(50.4456, 30.5423,25, "Mariinsky Park 4"));
+        mAnomalies.put("Mariinsky Park 5", new Anomaly(50.4466, 30.5423,30, "Mariinsky Park 5"));
+        mAnomalies.put("Mariinsky Park 6", new Anomaly(50.4478, 30.5389,20, "Mariinsky Park 6"));
+        mAnomalies.put("Mariinsky Park 7", new Anomaly(50.4467, 30.5399,20, "Mariinsky Park 7"));
+        mAnomalies.put("Mariinsky Park 8", new Anomaly(50.4473, 30.5415,5, "Mariinsky Park 8"));
+        mAnomalies.put("Mariinsky Park 9", new Anomaly(50.4481, 30.5398,15, "Mariinsky Park 9"));
+
         return  mAnomalies;
     }
 
@@ -155,19 +178,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     private boolean isInAnomaly(Location location){
-        double latitude = location.getLatitude();
-        double longitude = location.getLongitude();
-        double accuracy = location.getAccuracy();
         Enumeration e = mAnomalies.keys();
         while(e.hasMoreElements()){
             String i = (String) e.nextElement();
             Anomaly anomaly = mAnomalies.get(i);
-            double distance = Math.sqrt(Math.pow((latitude - anomaly.lat),2) + Math.pow((longitude - anomaly.lng),2));
-            distance *= 100000;
-            if(distance < anomaly.radius + accuracy)
+            if(isDistanceLessThanAnomalyRadius(anomaly, location))
                 return true;
         }
         return false;
+    }
+
+    private boolean isDistanceLessThanAnomalyRadius(Anomaly anomaly, Location location){
+        double latitude = location.getLatitude();
+        double longitude = location.getLongitude();
+        double accuracy = location.getAccuracy();
+        double distance = Math.sqrt(Math.pow((latitude - anomaly.lat),2) + Math.pow((longitude - anomaly.lng),2));
+        distance *= 100000;
+        if(distance < anomaly.radius + accuracy)
+            return true;
+        else return false;
     }
 
     protected void createLocationRequest() {
@@ -206,7 +235,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Uri notification = Uri.parse("android.resource://"+mContext.getPackageName()+"/"+R.raw.geiger_counter_sound);
         mGeigerSound = RingtoneManager.getRingtone(getApplicationContext(), notification);
     }
-    
+
     private class Anomaly{
         Anomaly(double _lat, double _lng, int _radius, String _name){
             lat = _lat;
